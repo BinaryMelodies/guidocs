@@ -1,0 +1,38 @@
+name: Compile HTML using Python
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  generate-html:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v7
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.13'
+    - name: Run web.py
+      run: |
+        mkdir -p out
+        python src/web.py --no-binary src/data.xml out
+    - name: Upload file as artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./out/
+
+  deploy:
+    environment:
+      name: github-pages
+    runs-on: ubuntu-latest
+    needs: generate-html
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub pages
+        uses: actions/deploy-pages@v4
+

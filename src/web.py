@@ -4,6 +4,11 @@ import os
 import sys
 import xml.etree.ElementTree as ElementTree
 
+DO_TANGLE = True
+if sys.argv[1] == '--no-binary':
+	DO_TANGLE = False
+	sys.argv.pop(1)
+
 root = ElementTree.parse(sys.argv[1]).getroot()
 if root.tag != 'web':
 	print(f"Expected: <web>, received <{root.tag}> as root node", file = sys.stderr)
@@ -66,6 +71,9 @@ def process_node(node, method, file, version = None):
 		print("</html>", file = file)
 		file.close()
 	elif node.tag == TANGLE:
+		if not DO_TANGLE:
+			return
+
 		for version in ['xlib', 'xcb']:
 			filename = node.attrib['filename'].replace('%', version)
 			if filename in GENERATED_C_FILES:
@@ -157,6 +165,9 @@ def process_node(node, method, file, version = None):
 
 for child in root:
 	process_node(child, None, None, None)
+
+if not DO_TANGLE:
+	exit()
 
 GENERATED_FILES.add('Makefile')
 with open(os.path.join(sys.argv[2], 'Makefile'), 'w') as file:
