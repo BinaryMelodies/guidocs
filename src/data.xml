@@ -23,15 +23,16 @@
 
 <p><em>XCB</em> is an alternative programming library developed in the 2000s that offers a much more direct translation to the X11 protocol functionality. It is very similar to Xlib but leaner and with less convenience functionality available. Programming using the two is very similar, which is why this guide was created.</p>
 
+<weave versions="Xlib XCB">
 <h1>Get a window onto the screen as fast as possible</h1>
 
 <p>Before anything, we need to include the proper header files.</p>
 
 <code id="include1">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 #include <X11/Xlib.h>
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 #include <xcb/xcb.h>
 ]]></version>
 </code>
@@ -39,7 +40,7 @@
 <p>First, a connection must be established to the X Window server, the software that displays the windows are retrieves user interactions.</p>
 
 <code id="connect">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 Display * XOpenDisplay(
     const char * display_name);
@@ -47,7 +48,7 @@ Display * XOpenDisplay(
 
 Display * display = XOpenDisplay(NULL);
 ]]></version>
-<version name="xcb">
+<version name="XCB">
 /*
 xcb_connection_t * xcb_connect(
     const char * display_name,
@@ -61,7 +62,7 @@ xcb_connection_t * connection = xcb_connect(NULL, NULL);
 <p>For XCB, get the first screen (a better way would be to get the default screen).</p>
 
 <code id="getscreen0">
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 const struct xcb_setup_t * xcb_get_setup(
     xcb_connection_t * c);
@@ -77,7 +78,7 @@ xcb_screen_t * screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data
 <p>Create a window. For Xlib, this can be done using XCreateSimpleWindow.</p>
 
 <code id="createwindow0">
-<version name="xlib">
+<version name="Xlib">
 /*
 Window XCreateSimpleWindow(
     Display * display,
@@ -107,7 +108,7 @@ Window window = XCreateSimpleWindow(
 <p>Or using the more versatile XCreateWindow. Note that Xlib creates the window ID (return with the type <tt>Window</tt>), whereas for XCB the <tt>xcb_generate_id</tt> function must allocate it first. This function can be used for all ID allocation.</p>
 
 <code id="createwindow1">
-<version name="xlib">
+<version name="Xlib">
 /*
 Window XCreateWindow(
     Display * display,
@@ -138,7 +139,7 @@ Window window = XCreateWindow(
     /* valuemask = */ 0,
     /* attributes = */ NULL);
 </version>
-<version name="xcb">
+<version name="XCB">
 /*
 uint32_t xcb_generate_id(xcb_connection_t * conn);
 
@@ -179,7 +180,7 @@ xcb_create_window(
 <p>Make the window appear on screen.</p>
 
 <code id="mapwindow">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 int XMapWindow(
     Display * display,
@@ -188,7 +189,7 @@ int XMapWindow(
 
 XMapWindow(display, window);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 xcb_void_cookie_t xcb_map_window(
     xcb_connection_t * conn,
@@ -202,14 +203,14 @@ xcb_map_window(connection, window);
 <p>Until now, these commands have been buffered and not sent to the server. A flush instruction is required for them to take effect.</p>
 
 <code id="flush">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 int XFlush(Display * display);
 */
 
 XFlush(display);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 int xcb_flush(xcb_connection_t * c);
 */
@@ -221,15 +222,16 @@ xcb_flush(connection);
 <p>For linking, the library has to be specified.</p>
 
 <code>
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 gcc -lX11
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 gcc -lxcb
 ]]></version>
 </code>
+</weave>
 
-<tangle filename="quick-start-%.c">
+<tangle filename="quick-start-%.c" versions="Xlib XCB">
 <![CDATA[
 #include <stdio.h>
 ]]>
@@ -247,7 +249,7 @@ int main()
 <include id="connect"/>
 <include id="getscreen0"/>
 <include id="createwindow0"/>
-<include id="createwindow1" version="xcb"/>
+<include id="createwindow1" version="XCB"/>
 <include id="mapwindow"/>
 <include id="flush"/>
     getchar();
@@ -258,12 +260,13 @@ int main()
 
 <!-- - - - - -->
 
+<weave versions="Xlib XCB">
 <h1>Writing an event loop</h1>
 
 <p>Establish a connection and get the default screen.</p>
 
 <code id="connect-screen">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 Display * XOpenDisplay(
     const char * display_name);
@@ -275,7 +278,7 @@ int DefaultScreen(
 Display * display = XOpenDisplay(NULL);
 int screen_number = DefaultScreen(display);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 xcb_connection_t * xcb_connect(
     const char * display_name,
@@ -314,7 +317,7 @@ for(; iter.rem; screen_number--, xcb_screen_next(&iter))
 <p>Create a window with background and border color set.</p>
 
 <code id="createwindow2">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 unsigned long WhitePixel(
     Display * display,
@@ -363,7 +366,7 @@ Window window = XCreateWindow(
     /* valuemask = */ CWBackPixel | CWBorderPixel,
     /* attributes = */ &amp;window_attributes);
 </version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /* these attributes must come in this order */
 uint32_t window_attributes[2];
 /* background_pixel */
@@ -411,7 +414,7 @@ xcb_create_window(
 <p>We will wait for the <tt>MapNotify</tt> event so that the window is displayed on screen. Xlib offers the <tt>XSelectInput</tt> function for this functionality.</p>
 
 <code id="eventmask0">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 XSelectInput(display, window, StructureNotifyMask);
 ]]></version>
 </code>
@@ -419,7 +422,7 @@ XSelectInput(display, window, StructureNotifyMask);
 <p>For XCB we need to call <tt>xcb_change_window_attributes</tt> for this. Note that this could have been passed during window creation, as we will see in a later example.</p>
 
 <code id="eventmask1">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 int XChangeWindowAttributes(
     Display * display,
@@ -433,7 +436,7 @@ window_attributes.event_mask = StructureNotifyMask;
 
 XChangeWindowAttributes(display, window, CWEventMask, &attributes);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 xcb_void_cookie_t xcb_change_window_attributes(
     xcb_connection_t * conn,
@@ -463,7 +466,7 @@ xcb_change_window_attributes(
 <p>Begin the event loop. Wait each iteration until an event is available and then process it. Note that for XCB, the function <tt>xcb_wait_for_event</tt> allocates a structure on the heap that must be freed with <tt>free</tt> once it is no longer used.</p>
 
 <code id="begin-eventloop1">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 int XNextEvent(
     Display * display,
@@ -475,7 +478,7 @@ while(true)
     XEvent event;
     XNextEvent(display, &event);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 xcb_generic_event_t * xcb_wait_for_event(
     xcb_connection_t * c);
@@ -492,12 +495,12 @@ while(true)
 <p>Check the returned event type.</p>
 
 <code id="check-event-mapnotify">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 switch(event.type)
 {
     case MapNotify:
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 switch(event->response_type & ~0x80)
 {
     case XCB_MAP_NOTIFY:
@@ -507,7 +510,7 @@ switch(event->response_type & ~0x80)
 <p>Set up a graphics context for drawing.</p>
 
 <code id="setup-gc">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 GC XCreateGC(
     Display * display,
@@ -522,7 +525,7 @@ GC gc = XCreateGC(
     /* valuemask = */ 0,
     /* values = */ NULL);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 uint32_t xcb_generate_id(xcb_connection_t * conn);
 
@@ -548,7 +551,7 @@ xcb_create_gc(
 <p>Select the drawing color. For Xlib, we can use the function <tt>XSetForeground</tt> directly.</p>
 
 <code id="set-foreground-black0">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 unsigned long BlackPixel(
     Display * display,
@@ -567,7 +570,7 @@ XSetForeground(display, gc, BlackPixel(display, screen_number));
 <p>However, for XCB we need to use the more general <tt>xcb_change_gc</tt> function. Note that this could have been set up during creating the graphical context.</p>
 
 <code id="set-foreground-black1">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 /*
 unsigned long BlackPixel(
     Display * display,
@@ -587,7 +590,7 @@ XChangeGC(
     /* valuemask = */ GCForeground,
     /* values = */ &amp;gc_attributes);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 /*
 xcb_void_cookie_t xcb_change_gc(
     xcb_connection_t * conn,
@@ -609,7 +612,7 @@ xcb_change_gc(
 <p>Draw a line. Xlib contains a function to draw a single line.</p>
 
 <code id="drawline0">
-<version name="xlib">
+<version name="Xlib">
 /*
 int XDrawLine(
     Display * display,
@@ -628,7 +631,7 @@ XDrawLine(display, window, gc, <i>X1</i>, <i>Y1</i>, <i>X2</i>, <i>Y2</i>);
 <p>Alternatively, Xlib and XCB both have a function to draw a polygonal line.</p>
 
 <code id="drawline">
-<version name="xlib">
+<version name="Xlib">
 /*
 int XDrawLines(
     Display * display,
@@ -654,7 +657,7 @@ XDrawLines(
     2,
     CoordModeOrigin);
 </version>
-<version name="xcb">
+<version name="XCB">
 /*
 xcb_void_cookie_t xcb_poly_lines(
     xcb_connection_t * conn,
@@ -685,12 +688,12 @@ xcb_poly_line(
 <p>XCB requires the connection to be flushed. This will happen for Xlib when checking for events. We also need to free the memory allocated for the event variable.</p>
 
 <code id="end-eventloop1">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
             break;
     } // end switch
 } // end while
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
                 xcb_flush(connection);
                 break;
         } // end switch
@@ -699,8 +702,9 @@ xcb_poly_line(
 } // end while
 ]]></version>
 </code>
+</weave>
 
-<tangle filename="window-%.c">
+<tangle filename="window-%.c" versions="Xlib XCB">
 <![CDATA[
 #include <stdio.h>
 #include <stdlib.h>
@@ -724,15 +728,15 @@ int main()
 <include id="connect-screen"/>
 <include id="createwindow2"/>
 <include id="eventmask0"/>
-<include id="eventmask1" version="xcb"/>
+<include id="eventmask1" version="XCB"/>
 <include id="mapwindow"/>
-<include id="flush" version="xcb"/>
+<include id="flush" version="XCB"/>
 <include id="begin-eventloop1"/>
     <include id="check-event-mapnotify"/>
         {
         <include id="setup-gc"/>
         <include id="set-foreground-black0"/>
-        <include id="set-foreground-black1" version="xcb"/>
+        <include id="set-foreground-black1" version="XCB"/>
         <include id="drawline"/>
         }
 <include id="end-eventloop1"/>
@@ -743,16 +747,17 @@ int main()
 
 <!-- - - - - -->
 
+<weave versions="Xlib XCB">
 <h1>Extended event handling</h1>
 
 <p>We will need more include files for these examples.</p>
 
 <code id="include2">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 #include <xcb/xcb.h>
 ]]></version>
 </code>
@@ -760,7 +765,7 @@ int main()
 <p>After creating the connection and selecting the default screen, create the window and select which events to listen to.</p>
 
 <code id="createwindow3">
-<version name="xlib">
+<version name="Xlib">
 XSetWindowAttributes window_attributes;
 window_attributes.background_pixel = WhitePixel(display, screen_number);
 window_attributes.border_pixel = BlackPixel(display, screen_number);
@@ -789,7 +794,7 @@ Window window = XCreateWindow(
     /* valuemask = */ CWBackPixel | CWBorderPixel | CWEventMask,
     /* attributes = */ &amp;window_attributes);
 </version>
-<version name="xcb">
+<version name="XCB">
 /* these attributes must come in this order */
 uint32_t window_attributes[3];
 /* background_pixel */
@@ -829,7 +834,7 @@ xcb_create_window(
 <p>Set the window title. The full title and the iconified title can be different, so both of them need to be set.</p>
 
 <code id="settitle">
-<version name="xlib">
+<version name="Xlib">
 XTextProperty window_title;
 char * window_title_text = <i>WINDOW_TITLE</i>;
 XStringListToTextProperty(&amp;window_title_text, 1, &amp;window_title);
@@ -837,7 +842,7 @@ XStringListToTextProperty(&amp;window_title_text, 1, &amp;window_title);
 XSetWMName(display, window, &amp;window_title);
 XSetWMIconName(display, window, &amp;window_title);
 </version>
-<version name="xcb">
+<version name="XCB">
 xcb_change_property(
     connection,
     XCB_PROP_MODE_REPLACE,
@@ -865,7 +870,7 @@ This is done by retrieving an atom identifier through its name. For XCB this req
 In XCB, the request and processing the response is done via two separate functions: <tt>xcb_intern_atom</tt> and <tt>xcb_intern_atom_reply</tt>.</p>
 
 <code id="WM_PROTOCOLS">
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 xcb_intern_atom_reply_t * intern_atom_reply = xcb_intern_atom_reply(
     connection,
     xcb_intern_atom(
@@ -886,10 +891,10 @@ if(intern_atom_reply)
 <p>Then we intern the <tt>WM_DELETE_WINDOW</tt>.</p>
 
 <code id="WM_DELETE_WINDOW">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 Atom WM_DELETE_WINDOW = XInternAtom(display, "WM_DELETE_WINDOW", false);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 intern_atom_reply = xcb_intern_atom_reply(
     connection,
     xcb_intern_atom(
@@ -910,7 +915,7 @@ if(intern_atom_reply)
 <p>Finally we change the <tt>WM_PROTOCOLS</tt> of the window.</p>
 
 <code id="set_wm_protocols">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 Atom atoms[1];
 atoms[0] = WM_DELETE_WINDOW;
 XSetWMProtocols(
@@ -919,7 +924,7 @@ XSetWMProtocols(
     atoms,
     1);
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 xcb_atom_t atoms[1];
 atoms[0] = WM_DELETE_WINDOW;
 xcb_change_property(
@@ -937,7 +942,7 @@ xcb_change_property(
 <p>After mapping the window, we enter the main loop.</p>
 
 <code id="begin-eventloop2">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 bool is_running = true;
 while(is_running)
 {
@@ -948,7 +953,7 @@ while(is_running)
         switch(event.type)
         {
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 bool is_running = true;
 while(is_running)
 {
@@ -963,7 +968,7 @@ while(is_running)
 <p>Check for window closing, via <tt>ClientMessage</tt> and checking if the data is <tt>WM_DELETE_WINDOW</tt>.</p>
 
 <code id="check-event-deletewindow">
-<version name="xlib">
+<version name="Xlib">
 case ClientMessage:
     if(event.xclient.data.l[0] == WM_DELETE_WINDOW)
     {
@@ -972,7 +977,7 @@ case ClientMessage:
     }
     break;
 </version>
-<version name="xcb">
+<version name="XCB">
 case XCB_CLIENT_MESSAGE:
     if(((xcb_client_message_event_t *)event)->data.data32[0] == WM_DELETE_WINDOW)
     {
@@ -986,7 +991,7 @@ case XCB_CLIENT_MESSAGE:
 <p>On exposure, display a line (instead of MapNotify).</p>
 
 <code id="check-event-exposure">
-<version name="xlib">
+<version name="Xlib">
 case Expose:
 {
     fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
@@ -1020,7 +1025,7 @@ case Expose:
 }
 break;
 </version>
-<version name="xcb">
+<version name="XCB">
 case XCB_EXPOSE:
 {
     fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
@@ -1064,7 +1069,7 @@ break;
 <p>To check keyboard presses and releases:</p>
 
 <code id="check-event-key">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 case KeyPress:
 case KeyRelease:
     fprintf(stderr, "Key%s{keycode = 0x%02X, state = 0x%04X}\n",
@@ -1073,7 +1078,7 @@ case KeyRelease:
     );
 break;
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 case XCB_KEY_PRESS:
 case XCB_KEY_RELEASE:
     fprintf(stderr, "Key%s{keycode = 0x%02X, state = 0x%04X}\n",
@@ -1087,7 +1092,7 @@ case XCB_KEY_RELEASE:
 <p>To check button presses and releases:</p>
 
 <code id="check-event-button">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 case ButtonPress:
 case ButtonRelease:
     fprintf(stderr, "Button%s{button = %d, position = (%d, %d)}\n",
@@ -1098,7 +1103,7 @@ case ButtonRelease:
     );
 break;
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 case XCB_BUTTON_PRESS:
 case XCB_BUTTON_RELEASE:
     fprintf(stderr, "Button%s{button = %d, position = (%d, %d)}\n",
@@ -1114,14 +1119,14 @@ break;
 <p>To check mouse movement:</p>
 
 <code id="check-event-motion">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 case MotionNotify:
     fprintf(stderr, "MotionNotify(%d, %d)\n",
         event.xmotion.x, event.xmotion.y
     );
 break;
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 case XCB_MOTION_NOTIFY:
     fprintf(stderr, "MotionNotify(%d, %d)\n",
         ((xcb_motion_notify_event_t *)event)->event_x,
@@ -1134,7 +1139,7 @@ break;
 <p>To check mouse movement entering and leaving the window:</p>
 
 <code id="check-event-enter-leave">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 case EnterNotify:
     fprintf(stderr, "EnterNotify(%d, %d)\n",
         event.xcrossing.x, event.xcrossing.y
@@ -1146,7 +1151,7 @@ case LeaveNotify:
     );
 break;
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 case XCB_ENTER_NOTIFY:
     fprintf(stderr, "EnterNotify(%d, %d)\n",
         ((xcb_enter_notify_event_t *)event)->event_x,
@@ -1165,7 +1170,7 @@ break;
 <p>Track window movements and resizing.</p>
 
 <code id="check-event-configure">
-<version name="xlib">
+<version name="Xlib">
 case ConfigureNotify:
     fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
         event.xconfigure.x, event.xconfigure.y,
@@ -1174,7 +1179,7 @@ case ConfigureNotify:
     );
 break;
 </version>
-<version name="xcb">
+<version name="XCB">
 case XCB_CONFIGURE_NOTIFY:
     fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
         ((xcb_configure_notify_event_t *)event)->x,
@@ -1189,7 +1194,7 @@ break;
 <p>Finally, update the end of loop to quit if the close window button has been pressed.</p>
 
 <code id="end-eventloop2">
-<version name="xlib">
+<version name="Xlib">
         } // end switch
         if(!is_running)
         {
@@ -1199,7 +1204,7 @@ break;
     /* idle code can come here */
 } // end while
 </version>
-<version name="xcb">
+<version name="XCB">
         } // end switch
         free(event);
         if(!is_running)
@@ -1211,8 +1216,9 @@ break;
 } // end while
 </version>
 </code>
+</weave>
 
-<tangle filename="events-%.c">
+<tangle filename="events-%.c" versions="Xlib XCB">
 <![CDATA[
 #include <stdio.h>
 #include <stdlib.h>
@@ -1240,7 +1246,7 @@ int main()
 <include id="WM_DELETE_WINDOW"/>
 <include id="set_wm_protocols"/>
 <include id="mapwindow"/>
-<include id="flush" version="xcb"/>
+<include id="flush" version="XCB"/>
 <include id="begin-eventloop2"/>
     <include id="check-event-deletewindow"/>
     <include id="check-event-exposure"/>
@@ -1257,12 +1263,13 @@ int main()
 
 <!-- - - - - -->
 
+<weave versions="Xlib XCB">
 <h1>Idling and animating</h1>
 
 <p>Using <tt>XNextEvent</tt> and <tt>xcb_wait_for_event</tt> will block the running client until an event is available, typically as a result of user interaction. To use the idle time for other things, such as background calculation or animation, it must be checked whether any events are available first.</p>
 
 <code id="begin-eventloop3">
-<version name="xlib"><![CDATA[
+<version name="Xlib"><![CDATA[
 int width = 0, height = 0, state = 0;
 bool is_running = true;
 bool needs_redraw = false;
@@ -1276,7 +1283,7 @@ while(is_running)
         switch(event.type)
         {
 ]]></version>
-<version name="xcb"><![CDATA[
+<version name="XCB"><![CDATA[
 int width = 0, height = 0, state = 0;
 bool is_running = true;
 bool needs_redraw = false;
@@ -1294,7 +1301,7 @@ while(is_running)
 <p>On exposure, we set a flag to mark needing a redraw.</p>
 
 <code id="check-event-exposure2">
-<version name="xlib">
+<version name="Xlib">
 case Expose:
     fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
         event.xexpose.x, event.xexpose.y,
@@ -1305,7 +1312,7 @@ case Expose:
     needs_redraw = true;
 break;
 </version>
-<version name="xcb">
+<version name="XCB">
 case XCB_EXPOSE:
     fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
         ((xcb_expose_event_t *)event)->x,
@@ -1322,7 +1329,7 @@ break;
 <p>Register the size of the window on resizing (and before redrawing, wait for a following exposure event).</p>
 
 <code id="check-event-configure2">
-<version name="xlib">
+<version name="Xlib">
 case ConfigureNotify:
     fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
         event.xconfigure.x, event.xconfigure.y,
@@ -1333,7 +1340,7 @@ case ConfigureNotify:
     height = event.xconfigure.height;
 break;
 </version>
-<version name="xcb">
+<version name="XCB">
 case XCB_CONFIGURE_NOTIFY:
     fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
         ((xcb_configure_notify_event_t *)event)->x,
@@ -1350,7 +1357,7 @@ break;
 <p>At the end of the loop we redraw the image.</p>
 
 <code id="end-eventloop3">
-<version name="xlib">
+<version name="Xlib">
         } // end switch
     } // end if
 
@@ -1415,7 +1422,7 @@ break;
     }
 } // end while
 </version>
-<version name="xcb">
+<version name="XCB">
         } // end switch
         free(event);
     } // end if
@@ -1484,9 +1491,9 @@ break;
 } // end while
 </version>
 </code>
--->
+</weave>
 
-<tangle filename="animate-%.c">
+<tangle filename="animate-%.c" versions="Xlib XCB">
 <![CDATA[
 #include <stdio.h>
 #include <stdlib.h>
@@ -1515,7 +1522,7 @@ int main()
 <include id="WM_DELETE_WINDOW"/>
 <include id="set_wm_protocols"/>
 <include id="mapwindow"/>
-<include id="flush" version="xcb"/>
+<include id="flush" version="XCB"/>
 <include id="begin-eventloop3"/>
     <include id="check-event-deletewindow"/>
     <include id="check-event-exposure2"/>

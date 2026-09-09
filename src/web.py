@@ -58,24 +58,31 @@ def process_code(node, method, file):
 
 GENERATED_C_FILES = []
 GENERATED_FILES = set()
-def process_node(node, method, file, version = None):
+def process_node(node, method, file, version = None, versions = ()):
 	global WEAVE, TANGLE, SNIPPETS, GENERATED_C_FILES
 	if node.tag == WEAVE:
-		filename = node.attrib['filename']
-		GENERATED_FILES.add(filename)
-		file = open(os.path.join(sys.argv[2], filename), 'w')
-		print("<!doctype html>", file = file)
-		print("<html>", file = file)
-		for child in node:
-			process_node(child, WEAVE, file, None)
-		print("</html>", file = file)
-		file.close()
+		if 'filename' in node.attrib:
+			filename = node.attrib['filename']
+			GENERATED_FILES.add(filename)
+			file = open(os.path.join(sys.argv[2], filename), 'w')
+			print("<!doctype html>", file = file)
+			print("<html>", file = file)
+			for child in node:
+				process_node(child, WEAVE, file, None, versions)
+			print("</html>", file = file)
+			file.close()
+		elif method == WEAVE and 'versions' in node.attrib:
+			versions = tuple(node.attrib['versions'].split())
+			for child in node:
+				process_node(child, WEAVE, file, None, versions)
+		else:
+			print(f"Error: unexpected <weave> tag with no filename outside containing <weave> tag", file = sys.stderr)
 	elif node.tag == TANGLE:
 		if not DO_TANGLE:
 			return
 
-		for version in ['xlib', 'xcb']:
-			filename = node.attrib['filename'].replace('%', version)
+		for version in node.attrib['versions'].split():
+			filename = node.attrib['filename'].replace('%', version.lower())
 			if filename in GENERATED_C_FILES:
 				print(f"Error: overwriting already generated file {filename}", file = sys.stderr)
 			GENERATED_FILES.add(filename)
@@ -84,17 +91,17 @@ def process_node(node, method, file, version = None):
 			if node.text is not None:
 				print(node.text.strip(), file = file)
 			for child in node:
-				process_node(child, TANGLE, file, version)
+				process_node(child, TANGLE, file, version, versions)
 			file.close()
 	elif method == WEAVE:
 		if node.tag == 'code' or node.tag == 'include':
 			print("""<table border='1' width='100%'>
-<tr>
-<td width="50%">Xlib</td>
-<td width="50%">XCB</td>
-</tr>
 <tr>""", file = file)
-			versions = {}
+			for version in versions:
+				print(f'<td width="{100//len(versions)}%">{version}</td>', file = file)
+			print("""</tr>
+<tr>""", file = file)
+			code_versions = {}
 			code_id = node.attrib.get('id')
 			if node.tag == 'code':
 				source_node = node
@@ -106,18 +113,18 @@ def process_node(node, method, file, version = None):
 			for snippet_version in source_node:
 				if snippet_version.tag == 'version':
 					version_name = snippet_version.attrib['name']
-					if version in versions:
+					if version in code_versions:
 						print(f"Error: repeated version name {version_name} for code snippet {code_id}", file = sys.stderr)
 					else:
-						if version_name not in {'xlib', 'xcb'}:
+						if version_name not in versions:
 							print(f"Warning: unrecognized version name {version_name} for code snippet {code_id}", file = sys.stderr)
-					versions[version_name] = snippet_version
-			for version in ['xlib', 'xcb']:
-				if version not in versions:
+					code_versions[version_name] = snippet_version
+			for version in versions:
+				if version not in code_versions:
 					print("<td></td>", file = file)
 				else:
 					print("<td><pre>", end = '', file = file)
-					process_code(versions[version], WEAVE, file)
+					process_code(code_versions[version], WEAVE, file)
 					print("</pre></td>", file = file)
 			print("""</tr>
 </table>""", file = file)
