@@ -1,0 +1,1543 @@
+<?xml version="1.0"?>
+<web>
+
+<weave filename="index.html">
+<head>
+<title>Comparing the Xlib and XCB APIs</title>
+</head>
+
+<body>
+<h1>Preamble</h1>
+
+<p>This document intends to provide concrete code snippets on how to write code for X11 using the Xlib and XCB libraries. It presents side by side how the same behavior can be coded using the Xlib and XCB libraries.</p>
+
+<p>The first example is based on Christophe Tronche's tutorial (see links below), and then collected from various resources online (such as <a href="https://stackoverflow.com">the website Stack Overflow</a>). The declarations for the library functions are lifted from their manual pages.</p>
+
+<h1>Overview</h1>
+
+<p>The X Window System was developed in the 1980s. It is based on a networked protocol called the <em>X11 protocol</em>, meaning that the program (called the <em>client</em>) and the display (called the <em>server</em>) might be on different machines connected through a network. This also means that all information between the client and the server must be serialized and sent through a socket, even if the two participants are running on the same machine.</p>
+
+<p>On the lowest level, a client must open a connection, negotiate authentication, and then send all instructions to the server as a sequence of bytes. Similarly, all interaction from the server will be received as sequences of bytes, which the client must poll for on the sockets and then parse it.</p>
+
+<p>To make programming more convenient, the <em>Xlib</em> programming library was created that abstracts away most of this functionality. Xlib itself was still considered relatively low level, and it was intended that proprietary higher level widget toolkits based on the <em>Xt Toolkit Intrinsics</em>, such as <em>Motif</em>, <em>X Athena Widgets</em> or <em>OPEN LOOK Intrinsics Toolkit (OLIT)</em> would be used for most programs. This document does not touch on these APIs.</p>
+
+<p><em>XCB</em> is an alternative programming library developed in the 2000s that offers a much more direct translation to the X11 protocol functionality. It is very similar to Xlib but leaner and with less convenience functionality available. Programming using the two is very similar, which is why this guide was created.</p>
+
+<h1>Get a window onto the screen as fast as possible</h1>
+
+<p>Before anything, we need to include the proper header files.</p>
+
+<code id="include1">
+<version name="xlib"><![CDATA[
+#include <X11/Xlib.h>
+]]></version>
+<version name="xcb"><![CDATA[
+#include <xcb/xcb.h>
+]]></version>
+</code>
+
+<p>First, a connection must be established to the X Window server, the software that displays the windows are retrieves user interactions.</p>
+
+<code id="connect">
+<version name="xlib"><![CDATA[
+/*
+Display * XOpenDisplay(
+    const char * display_name);
+*/
+
+Display * display = XOpenDisplay(NULL);
+]]></version>
+<version name="xcb">
+/*
+xcb_connection_t * xcb_connect(
+    const char * display_name,
+    int * default_screen);
+*/
+
+xcb_connection_t * connection = xcb_connect(NULL, NULL);
+</version>
+</code>
+
+<p>For XCB, get the first screen (a better way would be to get the default screen).</p>
+
+<code id="getscreen0">
+<version name="xcb"><![CDATA[
+/*
+const struct xcb_setup_t * xcb_get_setup(
+    xcb_connection_t * c);
+
+xcb_screen_iterator_t xcb_setup_roots_iterator(
+    const xcb_setup_t * R);
+*/
+
+xcb_screen_t * screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+]]></version>
+</code>
+
+<p>Create a window. For Xlib, this can be done using XCreateSimpleWindow.</p>
+
+<code id="createwindow0">
+<version name="xlib">
+/*
+Window XCreateSimpleWindow(
+    Display * display,
+    Window parent,
+    int x,
+    int y,
+    unsigned int width,
+    unsigned int height,
+    unsigned int border_width,
+    unsigned long border,
+    unsigned long background);
+*/
+
+Window window = XCreateSimpleWindow(
+    display,
+    DefaultRootWindow(display),
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* border = */ BlackPixel(display, DefaultScreen(display)),
+    /* background = */ WhitePixel(display, DefaultScreen(display)));
+</version>
+</code>
+
+<p>Or using the more versatile XCreateWindow. Note that Xlib creates the window ID (return with the type <tt>Window</tt>), whereas for XCB the <tt>xcb_generate_id</tt> function must allocate it first. This function can be used for all ID allocation.</p>
+
+<code id="createwindow1">
+<version name="xlib">
+/*
+Window XCreateWindow(
+    Display * display,
+    Window parent,
+    int x,
+    int y,
+    unsigned int width,
+    unsigned int height,
+    unsigned int border_width,
+    int depth,
+    unsigned int class,
+    Visual * visual,
+    unsigned long valuemask,
+    XSetWindowAttributes * attributes);
+*/
+
+Window window = XCreateWindow(
+    display,
+    DefaultRootWindow(display),
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* depth = */ CopyFromParent,
+    /* class = */ InputOutput,
+    /* visual = */ CopyFromParent,
+    /* valuemask = */ 0,
+    /* attributes = */ NULL);
+</version>
+<version name="xcb">
+/*
+uint32_t xcb_generate_id(xcb_connection_t * conn);
+
+xcb_void_cookie_t xcb_create_window(
+    xcb_connection_t * conn,
+    uint8_t depth,
+    xcb_window_t wid,
+    xcb_window_t parent,
+    int16_t x,
+    int16_t y,
+    uint16_t width,
+    uint16_t height,
+    uint16_t border_width,
+    uint16_t _class,
+    xcb_visualid_t visual,
+    uint32_t value_mask,
+    const void * value_list);
+*/
+
+xcb_window_t window = xcb_generate_id(connection);
+xcb_create_window(
+    connection,
+    /* depth = */ XCB_COPY_FROM_PARENT,
+    window,
+    screen->root,
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* class = */ XCB_WINDOW_CLASS_INPUT_OUTPUT,
+    /* visual = */ XCB_COPY_FROM_PARENT,
+    /* valuemask = */ 0,
+    /* attributes = */ NULL);
+</version>
+</code>
+
+<p>Make the window appear on screen.</p>
+
+<code id="mapwindow">
+<version name="xlib"><![CDATA[
+/*
+int XMapWindow(
+    Display * display,
+    Window w);
+*/
+
+XMapWindow(display, window);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+xcb_void_cookie_t xcb_map_window(
+    xcb_connection_t * conn,
+    xcb_window_t window);
+*/
+
+xcb_map_window(connection, window);
+]]></version>
+</code>
+
+<p>Until now, these commands have been buffered and not sent to the server. A flush instruction is required for them to take effect.</p>
+
+<code id="flush">
+<version name="xlib"><![CDATA[
+/*
+int XFlush(Display * display);
+*/
+
+XFlush(display);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+int xcb_flush(xcb_connection_t * c);
+*/
+
+xcb_flush(connection);
+]]></version>
+</code>
+
+<p>For linking, the library has to be specified.</p>
+
+<code>
+<version name="xlib"><![CDATA[
+gcc -lX11
+]]></version>
+<version name="xcb"><![CDATA[
+gcc -lxcb
+]]></version>
+</code>
+
+<tangle filename="quick-start-%.c">
+<![CDATA[
+#include <stdio.h>
+]]>
+<include id="include1"/>
+<![CDATA[
+#define WINDOW_LEFT 10
+#define WINDOW_TOP 10
+#define WINDOW_WIDTH 620
+#define WINDOW_HEIGHT 300
+#define WINDOW_TITLE "Example Window"
+
+int main()
+{
+]]>
+<include id="connect"/>
+<include id="getscreen0"/>
+<include id="createwindow0"/>
+<include id="createwindow1" version="xcb"/>
+<include id="mapwindow"/>
+<include id="flush"/>
+    getchar();
+<![CDATA[
+}
+]]>
+</tangle>
+
+<!-- - - - - -->
+
+<h1>Writing an event loop</h1>
+
+<p>Establish a connection and get the default screen.</p>
+
+<code id="connect-screen">
+<version name="xlib"><![CDATA[
+/*
+Display * XOpenDisplay(
+    const char * display_name);
+
+int DefaultScreen(
+    Display * display);
+*/
+
+Display * display = XOpenDisplay(NULL);
+int screen_number = DefaultScreen(display);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+xcb_connection_t * xcb_connect(
+    const char * display_name,
+    int * default_screen);
+*/
+
+int screen_number;
+xcb_connection_t * connection = xcb_connect(NULL, &screen_number);
+
+/*
+const struct xcb_setup_t * xcb_get_setup(
+    xcb_connection_t * c);
+
+xcb_screen_iterator_t xcb_setup_roots_iterator(
+    const xcb_setup_t * R);
+
+void xcb_screen_next(
+    xcb_screen_iterator_t * i);
+*/
+
+xcb_screen_iterator_t iter;
+xcb_screen_t * screen;
+iter = xcb_setup_roots_iterator(xcb_get_setup(connection));
+screen = iter.data;
+for(; iter.rem; screen_number--, xcb_screen_next(&iter))
+{
+    if(screen_number == 0)
+    {
+        screen = iter.data;
+        break;
+    }
+}
+]]></version>
+</code>
+
+<p>Create a window with background and border color set.</p>
+
+<code id="createwindow2">
+<version name="xlib"><![CDATA[
+/*
+unsigned long WhitePixel(
+    Display * display,
+    int screen_number);
+
+unsigned long BlackPixel(
+    Display * display,
+    int screen_number);
+*/
+
+XSetWindowAttributes window_attributes;
+window_attributes.background_pixel = WhitePixel(display, screen_number);
+window_attributes.border_pixel = BlackPixel(display, screen_number);]]>
+
+/*
+Window RootWindow(
+    Display * display,
+    int screen_number);
+
+Window XCreateWindow(
+    Display * display,
+    Window parent,
+    int x,
+    int y,
+    unsigned int width,
+    unsigned int height,
+    unsigned int border_width,
+    int depth,
+    unsigned int class,
+    Visual * visual,
+    unsigned long valuemask,
+    XSetWindowAttributes * attributes);
+*/
+
+Window window = XCreateWindow(
+    display,
+    RootWindow(display, screen_number),
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* depth = */ CopyFromParent,
+    /* class = */ InputOutput,
+    /* visual = */ CopyFromParent,
+    /* valuemask = */ CWBackPixel | CWBorderPixel,
+    /* attributes = */ &amp;window_attributes);
+</version>
+<version name="xcb"><![CDATA[
+/* these attributes must come in this order */
+uint32_t window_attributes[2];
+/* background_pixel */
+window_attributes[0] = screen->white_pixel;
+/* border_pixel */
+window_attributes[1] = screen->black_pixel;
+
+/*
+uint32_t xcb_generate_id(xcb_connection_t * conn);
+
+xcb_void_cookie_t xcb_create_window(
+    xcb_connection_t * conn,
+    uint8_t depth,
+    xcb_window_t wid,
+    xcb_window_t parent,
+    int16_t x,
+    int16_t y,
+    uint16_t width,
+    uint16_t height,
+    uint16_t border_width,
+    uint16_t _class,
+    xcb_visualid_t visual,
+    uint32_t value_mask,
+    const void * value_list);
+*/
+
+xcb_window_t window = xcb_generate_id(connection);]]>
+xcb_create_window(
+    connection,
+    /* depth = */ XCB_COPY_FROM_PARENT,
+    window,
+    screen->root,
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* class = */ XCB_WINDOW_CLASS_INPUT_OUTPUT,
+    /* visual = */ XCB_COPY_FROM_PARENT,
+    /* valuemask = */ XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL,
+    /* attributes = */ &amp;window_attributes);
+</version>
+</code>
+
+<p>We will wait for the <tt>MapNotify</tt> event so that the window is displayed on screen. Xlib offers the <tt>XSelectInput</tt> function for this functionality.</p>
+
+<code id="eventmask0">
+<version name="xlib"><![CDATA[
+XSelectInput(display, window, StructureNotifyMask);
+]]></version>
+</code>
+
+<p>For XCB we need to call <tt>xcb_change_window_attributes</tt> for this. Note that this could have been passed during window creation, as we will see in a later example.</p>
+
+<code id="eventmask1">
+<version name="xlib"><![CDATA[
+/*
+int XChangeWindowAttributes(
+    Display * display,
+    Window w,
+    unsigned long valuemask,
+    XSetWindowAttributes * attributes);
+*/
+
+XSetWindowAttributes window_attributes;
+window_attributes.event_mask = StructureNotifyMask;
+
+XChangeWindowAttributes(display, window, CWEventMask, &attributes);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+xcb_void_cookie_t xcb_change_window_attributes(
+    xcb_connection_t * conn,
+    xcb_window_t window,
+    uint32_t value_mask,
+    const void * value_list);
+*/
+
+uint32_t event_mask[1];
+event_mask[0] = XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+xcb_change_window_attributes(
+    connection,
+    window,
+    XCB_CW_EVENT_MASK,
+    event_mask);
+]]></version>
+</code>
+
+<p>Make the window appear on screen.</p>
+
+<include id="mapwindow"/>
+
+<p>For XCB, the connection must be flushed. Xlib does not require it here, since waiting for events will flush all commands.</p>
+
+<include id="flush"/>
+
+<p>Begin the event loop. Wait each iteration until an event is available and then process it. Note that for XCB, the function <tt>xcb_wait_for_event</tt> allocates a structure on the heap that must be freed with <tt>free</tt> once it is no longer used.</p>
+
+<code id="begin-eventloop1">
+<version name="xlib"><![CDATA[
+/*
+int XNextEvent(
+    Display * display,
+    XEvent * event_return);
+*/
+
+while(true)
+{
+    XEvent event;
+    XNextEvent(display, &event);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+xcb_generic_event_t * xcb_wait_for_event(
+    xcb_connection_t * c);
+*/
+
+while(true)
+{
+    xcb_generic_event_t * event;
+    while((event = xcb_wait_for_event(connection)))
+    {
+]]></version>
+</code>
+
+<p>Check the returned event type.</p>
+
+<code id="check-event-mapnotify">
+<version name="xlib"><![CDATA[
+switch(event.type)
+{
+    case MapNotify:
+]]></version>
+<version name="xcb"><![CDATA[
+switch(event->response_type & ~0x80)
+{
+    case XCB_MAP_NOTIFY:
+]]></version>
+</code>
+
+<p>Set up a graphics context for drawing.</p>
+
+<code id="setup-gc">
+<version name="xlib"><![CDATA[
+/*
+GC XCreateGC(
+    Display * display,
+    Drawable d,
+    unsigned long valuemask,
+    XGCValues * values);
+*/
+
+GC gc = XCreateGC(
+    display,
+    window,
+    /* valuemask = */ 0,
+    /* values = */ NULL);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+uint32_t xcb_generate_id(xcb_connection_t * conn);
+
+xcb_void_cookie_t xcb_create_gc(
+    xcb_connection_t * conn,
+    xcb_gcontext_t cid,
+    xcb_drawable_t drawable,
+    uint32_t value_mask,
+    const void * value_list);
+*/
+
+xcb_gcontext_t gc = xcb_generate_id(connection);
+xcb_create_gc(
+    connection,
+    gc,
+    window,
+    0,
+    NULL);
+]]>
+</version>
+</code>
+
+<p>Select the drawing color. For Xlib, we can use the function <tt>XSetForeground</tt> directly.</p>
+
+<code id="set-foreground-black0">
+<version name="xlib"><![CDATA[
+/*
+unsigned long BlackPixel(
+    Display * display,
+    int screen_number);
+
+int XSetForeground(
+    Display * display,
+    GC gc,
+    unsigned long foreground);
+*/
+
+XSetForeground(display, gc, BlackPixel(display, screen_number));
+]]></version>
+</code>
+
+<p>However, for XCB we need to use the more general <tt>xcb_change_gc</tt> function. Note that this could have been set up during creating the graphical context.</p>
+
+<code id="set-foreground-black1">
+<version name="xlib"><![CDATA[
+/*
+unsigned long BlackPixel(
+    Display * display,
+    int screen_number);
+
+int XChangeGC(
+    Display * display,
+    GC gc,
+    unsigned long valuemask,
+    XGCValues * values);
+*/
+
+gc_attributes.foreground = BlackPixel(display, screen_number);
+XChangeGC(
+    display,
+    gc,
+    /* valuemask = */ GCForeground,
+    /* values = */ &amp;gc_attributes);
+]]></version>
+<version name="xcb"><![CDATA[
+/*
+xcb_void_cookie_t xcb_change_gc(
+    xcb_connection_t * conn,
+    xcb_gcontext_t gc,
+    uint32_t value_mask,
+    const void * value_list);
+*/
+
+uint32_t gc_attributes[1];
+gc_attributes[0] = screen->black_pixel;
+xcb_change_gc(
+    connection,
+    gc,
+    XCB_GC_FOREGROUND,
+    gc_attributes);
+]]></version>
+</code>
+
+<p>Draw a line. Xlib contains a function to draw a single line.</p>
+
+<code id="drawline0">
+<version name="xlib">
+/*
+int XDrawLine(
+    Display * display,
+    Drawable d,
+    GC gc,
+    int x1,
+    int y1,
+    int x2,
+    int y2);
+*/
+
+XDrawLine(display, window, gc, <i>X1</i>, <i>Y1</i>, <i>X2</i>, <i>Y2</i>);
+</version>
+</code>
+
+<p>Alternatively, Xlib and XCB both have a function to draw a polygonal line.</p>
+
+<code id="drawline">
+<version name="xlib">
+/*
+int XDrawLines(
+    Display * display,
+    Drawable d,
+    GC gc,
+    XPoint * points,
+    int npoints,
+    int mode);
+*/
+
+XPoint points[2];
+
+points[0].x = <i>X1</i>;
+points[0].y = <i>Y1</i>;
+points[1].x = <i>X2</i>;
+points[1].y = <i>Y2</i>;
+
+XDrawLines(
+    display,
+    window,
+    gc,
+    points,
+    2,
+    CoordModeOrigin);
+</version>
+<version name="xcb">
+/*
+xcb_void_cookie_t xcb_poly_lines(
+    xcb_connection_t * conn,
+    uint8_t coordinate_mode,
+    xcb_drawable_t drawable,
+    xcb_gcontext_t gc,
+    uint32_t points_len,
+    const xcb_point_t * points);
+*/
+
+xcb_point_t points[2];
+
+points[0].x = <i>X1</i>;
+points[0].y = <i>Y1</i>;
+points[1].x = <i>X2</i>;
+points[1].y = <i>Y2</i>;
+
+xcb_poly_line(
+    connection,
+    XCB_COORD_MODE_ORIGIN,
+    window,
+    gc,
+    2,
+    points);
+</version>
+</code>
+
+<p>XCB requires the connection to be flushed. This will happen for Xlib when checking for events. We also need to free the memory allocated for the event variable.</p>
+
+<code id="end-eventloop1">
+<version name="xlib"><![CDATA[
+            break;
+    } // end switch
+} // end while
+]]></version>
+<version name="xcb"><![CDATA[
+                xcb_flush(connection);
+                break;
+        } // end switch
+        free(event);
+    } // end while
+} // end while
+]]></version>
+</code>
+
+<tangle filename="window-%.c">
+<![CDATA[
+#include <stdio.h>
+#include <stdlib.h>
+]]>
+<include id="include1"/>
+<![CDATA[
+#define WINDOW_LEFT 10
+#define WINDOW_TOP 10
+#define WINDOW_WIDTH 620
+#define WINDOW_HEIGHT 300
+#define WINDOW_TITLE "Example Window"
+
+#define X1 10
+#define Y1 10
+#define X2 300
+#define Y2 300
+
+int main()
+{
+]]>
+<include id="connect-screen"/>
+<include id="createwindow2"/>
+<include id="eventmask0"/>
+<include id="eventmask1" version="xcb"/>
+<include id="mapwindow"/>
+<include id="flush" version="xcb"/>
+<include id="begin-eventloop1"/>
+    <include id="check-event-mapnotify"/>
+        {
+        <include id="setup-gc"/>
+        <include id="set-foreground-black0"/>
+        <include id="set-foreground-black1" version="xcb"/>
+        <include id="drawline"/>
+        }
+<include id="end-eventloop1"/>
+<![CDATA[
+}
+]]>
+</tangle>
+
+<!-- - - - - -->
+
+<h1>Extended event handling</h1>
+
+<p>We will need more include files for these examples.</p>
+
+<code id="include2">
+<version name="xlib"><![CDATA[
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+]]></version>
+<version name="xcb"><![CDATA[
+#include <xcb/xcb.h>
+]]></version>
+</code>
+
+<p>After creating the connection and selecting the default screen, create the window and select which events to listen to.</p>
+
+<code id="createwindow3">
+<version name="xlib">
+XSetWindowAttributes window_attributes;
+window_attributes.background_pixel = WhitePixel(display, screen_number);
+window_attributes.border_pixel = BlackPixel(display, screen_number);
+window_attributes.event_mask =
+    ExposureMask /* part of the window needs redrawing */
+    | ButtonPressMask /* a mouse button is pressed */
+    | ButtonReleaseMask /* a mouse button is released */
+    | KeyPressMask /* a keyboard key is pressed */
+    | KeyReleaseMask /* a keyboard key is released */
+    | PointerMotionMask /* the mouse cursor is moved */
+    | EnterWindowMask /* the mouse cursor entered the window */
+    | LeaveWindowMask /* the mouse cursor left the window */
+    | StructureNotifyMask; /* the window is moved, resized, repositioned in the stack ordering, etc. */
+
+Window window = XCreateWindow(
+    display,
+    RootWindow(display, screen_number),
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* depth = */ CopyFromParent,
+    /* class = */ InputOutput,
+    /* visual = */ CopyFromParent,
+    /* valuemask = */ CWBackPixel | CWBorderPixel | CWEventMask,
+    /* attributes = */ &amp;window_attributes);
+</version>
+<version name="xcb">
+/* these attributes must come in this order */
+uint32_t window_attributes[3];
+/* background_pixel */
+window_attributes[0] = screen->white_pixel;
+/* border_pixel */
+window_attributes[1] = screen->black_pixel;
+/* event_mask */
+window_attributes[2] =
+    XCB_EVENT_MASK_EXPOSURE /* part of the window needs redrawing */
+    | XCB_EVENT_MASK_BUTTON_PRESS /* a mouse button is pressed */
+    | XCB_EVENT_MASK_BUTTON_RELEASE /* a mouse button is released */
+    | XCB_EVENT_MASK_KEY_PRESS /* a keyboard key is pressed */
+    | XCB_EVENT_MASK_KEY_RELEASE /* a keyboard key is released */
+    | XCB_EVENT_MASK_POINTER_MOTION /* the mouse cursor is moved */
+    | XCB_EVENT_MASK_ENTER_WINDOW /* the mouse cursor entered the window */
+    | XCB_EVENT_MASK_LEAVE_WINDOW /* the mouse cursor left the window */
+    | XCB_EVENT_MASK_STRUCTURE_NOTIFY; /* the window is moved, resized, repositioned in the stack ordering, etc. */
+
+xcb_window_t window = xcb_generate_id(connection);
+xcb_create_window(
+    connection,
+    /* depth = */ XCB_COPY_FROM_PARENT,
+    window,
+    screen->root,
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* class = */ XCB_WINDOW_CLASS_INPUT_OUTPUT,
+    /* visual = */ XCB_COPY_FROM_PARENT,
+    /* valuemask = */ XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK,
+    /* attributes = */ &amp;window_attributes);
+</version>
+</code>
+
+<p>Set the window title. The full title and the iconified title can be different, so both of them need to be set.</p>
+
+<code id="settitle">
+<version name="xlib">
+XTextProperty window_title;
+char * window_title_text = <i>WINDOW_TITLE</i>;
+XStringListToTextProperty(&amp;window_title_text, 1, &amp;window_title);
+
+XSetWMName(display, window, &amp;window_title);
+XSetWMIconName(display, window, &amp;window_title);
+</version>
+<version name="xcb">
+xcb_change_property(
+    connection,
+    XCB_PROP_MODE_REPLACE,
+    window,
+    XCB_ATOM_WM_NAME,
+    XCB_ATOM_STRING,
+    8,
+    sizeof <i>WINDOW_TITLE</i> - 1,
+    <i>WINDOW_TITLE</i>);
+
+xcb_change_property(
+    connection,
+    XCB_PROP_MODE_REPLACE,
+    window,
+    XCB_ATOM_WM_ICON_NAME,
+    XCB_ATOM_STRING,
+    8,
+    sizeof <i>WINDOW_TITLE</i> - 1,
+    <i>WINDOW_TITLE</i>);
+</version>
+</code>
+
+<p>Closing a window is not an event generated by the X Window Server but rather by the window manager. Therefore it has to be registered on the window first.
+This is done by retrieving an atom identifier through its name. For XCB this requires starting with <tt>WM_PROTOCOLS</tt>.
+In XCB, the request and processing the response is done via two separate functions: <tt>xcb_intern_atom</tt> and <tt>xcb_intern_atom_reply</tt>.</p>
+
+<code id="WM_PROTOCOLS">
+<version name="xcb"><![CDATA[
+xcb_intern_atom_reply_t * intern_atom_reply = xcb_intern_atom_reply(
+    connection,
+    xcb_intern_atom(
+        connection,
+        false,
+        sizeof "WM_PROTOCOLS" - 1,
+        "WM_PROTOCOLS"),
+    NULL);
+xcb_atom_t WM_PROTOCOLS;
+if(intern_atom_reply)
+{
+    WM_PROTOCOLS = intern_atom_reply->atom;
+    free(intern_atom_reply);
+}
+]]></version>
+</code>
+
+<p>Then we intern the <tt>WM_DELETE_WINDOW</tt>.</p>
+
+<code id="WM_DELETE_WINDOW">
+<version name="xlib"><![CDATA[
+Atom WM_DELETE_WINDOW = XInternAtom(display, "WM_DELETE_WINDOW", false);
+]]></version>
+<version name="xcb"><![CDATA[
+intern_atom_reply = xcb_intern_atom_reply(
+    connection,
+    xcb_intern_atom(
+        connection,
+        false,
+        sizeof "WM_DELETE_WINDOW" - 1,
+        "WM_DELETE_WINDOW"),
+    NULL);
+xcb_atom_t WM_DELETE_WINDOW;
+if(intern_atom_reply)
+{
+    WM_DELETE_WINDOW = intern_atom_reply->atom;
+    free(intern_atom_reply);
+}
+]]></version>
+</code>
+
+<p>Finally we change the <tt>WM_PROTOCOLS</tt> of the window.</p>
+
+<code id="set_wm_protocols">
+<version name="xlib"><![CDATA[
+Atom atoms[1];
+atoms[0] = WM_DELETE_WINDOW;
+XSetWMProtocols(
+    display,
+    window,
+    atoms,
+    1);
+]]></version>
+<version name="xcb"><![CDATA[
+xcb_atom_t atoms[1];
+atoms[0] = WM_DELETE_WINDOW;
+xcb_change_property(
+    connection,
+    XCB_PROP_MODE_REPLACE,
+    window,
+    WM_PROTOCOLS,
+    XCB_ATOM_ATOM,
+    32,
+    1,
+    atoms);
+]]></version>
+</code>
+
+<p>After mapping the window, we enter the main loop.</p>
+
+<code id="begin-eventloop2">
+<version name="xlib"><![CDATA[
+bool is_running = true;
+while(is_running)
+{
+    while(XPending(display))
+    {
+        XEvent event;
+        XNextEvent(display, &event);
+        switch(event.type)
+        {
+]]></version>
+<version name="xcb"><![CDATA[
+bool is_running = true;
+while(is_running)
+{
+    xcb_generic_event_t * event;
+    while((event = xcb_poll_for_event(connection)))
+    {
+        switch(event->response_type & ~0x80)
+        {
+]]></version>
+</code>
+
+<p>Check for window closing, via <tt>ClientMessage</tt> and checking if the data is <tt>WM_DELETE_WINDOW</tt>.</p>
+
+<code id="check-event-deletewindow">
+<version name="xlib">
+case ClientMessage:
+    if(event.xclient.data.l[0] == WM_DELETE_WINDOW)
+    {
+        <i>fprintf(stderr, "ClientMessage:DeleteWindow\n");</i>
+        is_running = false;
+    }
+    break;
+</version>
+<version name="xcb">
+case XCB_CLIENT_MESSAGE:
+    if(((xcb_client_message_event_t *)event)->data.data32[0] == WM_DELETE_WINDOW)
+    {
+        <i>fprintf(stderr, "ClientMessage:DeleteWindow\n");</i>
+        is_running = false;
+    }
+    break;
+</version>
+</code>
+
+<p>On exposure, display a line (instead of MapNotify).</p>
+
+<code id="check-event-exposure">
+<version name="xlib">
+case Expose:
+{
+    fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
+        event.xexpose.x, event.xexpose.y,
+        event.xexpose.x + event.xexpose.width,
+        event.xexpose.y + event.xexpose.height
+    );
+
+    XGCValues gc_attributes;
+    gc_attributes.foreground = BlackPixel(display, screen_number);
+    GC gc = XCreateGC(
+        display,
+        window,
+        /* valuemask = */ GCForeground,
+        /* values = */ &amp;gc_attributes);
+
+    XPoint points[2];
+
+    points[0].x = <i>X1</i>;
+    points[0].y = <i>Y1</i>;
+    points[1].x = <i>X2</i>;
+    points[1].y = <i>Y2</i>;
+
+    XDrawLines(
+        display,
+        window,
+        gc,
+        points,
+        2,
+        CoordModeOrigin);
+}
+break;
+</version>
+<version name="xcb">
+case XCB_EXPOSE:
+{
+    fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
+        ((xcb_expose_event_t *)event)->x,
+        ((xcb_expose_event_t *)event)->y,
+        ((xcb_expose_event_t *)event)->x + ((xcb_expose_event_t *)event)->width,
+        ((xcb_expose_event_t *)event)->y + ((xcb_expose_event_t *)event)->height
+    );
+
+    xcb_gcontext_t gc = xcb_generate_id(connection);
+    uint32_t gc_attributes[1];
+    gc_attributes[0] = screen->black_pixel;
+    xcb_create_gc(
+        connection,
+        gc,
+        window,
+        /* valuemask = */ XCB_GC_FOREGROUND,
+        /* values = */ gc_attributes);
+
+    xcb_point_t points[2];
+
+    points[0].x = <i>X1</i>;
+    points[0].y = <i>Y1</i>;
+    points[1].x = <i>X2</i>;
+    points[1].y = <i>Y2</i>;
+
+    xcb_poly_line(
+        connection,
+        XCB_COORD_MODE_ORIGIN,
+        window,
+        gc,
+        2,
+        points);
+
+    xcb_flush(connection);
+}
+break;
+</version>
+</code>
+
+<p>To check keyboard presses and releases:</p>
+
+<code id="check-event-key">
+<version name="xlib"><![CDATA[
+case KeyPress:
+case KeyRelease:
+    fprintf(stderr, "Key%s{keycode = 0x%02X, state = 0x%04X}\n",
+        event.type == KeyPress ? "Press" : "Release",
+        event.xkey.keycode, event.xkey.state
+    );
+break;
+]]></version>
+<version name="xcb"><![CDATA[
+case XCB_KEY_PRESS:
+case XCB_KEY_RELEASE:
+    fprintf(stderr, "Key%s{keycode = 0x%02X, state = 0x%04X}\n",
+        (event->response_type & ~0x80) == XCB_KEY_PRESS ? "Press" : "Release",
+        ((xcb_key_press_event_t *)event)->detail,
+        ((xcb_key_press_event_t *)event)->state
+    );
+]]></version>
+</code>
+
+<p>To check button presses and releases:</p>
+
+<code id="check-event-button">
+<version name="xlib"><![CDATA[
+case ButtonPress:
+case ButtonRelease:
+    fprintf(stderr, "Button%s{button = %d, position = (%d, %d)}\n",
+        event.type == ButtonPress ? "Press" : "Release",
+        event.xbutton.button,
+        event.xbutton.x,
+        event.xbutton.y
+    );
+break;
+]]></version>
+<version name="xcb"><![CDATA[
+case XCB_BUTTON_PRESS:
+case XCB_BUTTON_RELEASE:
+    fprintf(stderr, "Button%s{button = %d, position = (%d, %d)}\n",
+        (event->response_type & ~0x80) == XCB_BUTTON_PRESS ? "Press" : "Release",
+        ((xcb_button_press_event_t *)event)->detail,
+        ((xcb_button_press_event_t *)event)->event_x,
+        ((xcb_button_press_event_t *)event)->event_y
+    );
+break;
+]]></version>
+</code>
+
+<p>To check mouse movement:</p>
+
+<code id="check-event-motion">
+<version name="xlib"><![CDATA[
+case MotionNotify:
+    fprintf(stderr, "MotionNotify(%d, %d)\n",
+        event.xmotion.x, event.xmotion.y
+    );
+break;
+]]></version>
+<version name="xcb"><![CDATA[
+case XCB_MOTION_NOTIFY:
+    fprintf(stderr, "MotionNotify(%d, %d)\n",
+        ((xcb_motion_notify_event_t *)event)->event_x,
+        ((xcb_motion_notify_event_t *)event)->event_y
+    );
+break;
+]]></version>
+</code>
+
+<p>To check mouse movement entering and leaving the window:</p>
+
+<code id="check-event-enter-leave">
+<version name="xlib"><![CDATA[
+case EnterNotify:
+    fprintf(stderr, "EnterNotify(%d, %d)\n",
+        event.xcrossing.x, event.xcrossing.y
+    );
+break;
+case LeaveNotify:
+    fprintf(stderr, "LeaveNotify(%d, %d)\n",
+        event.xcrossing.x, event.xcrossing.y
+    );
+break;
+]]></version>
+<version name="xcb"><![CDATA[
+case XCB_ENTER_NOTIFY:
+    fprintf(stderr, "EnterNotify(%d, %d)\n",
+        ((xcb_enter_notify_event_t *)event)->event_x,
+        ((xcb_enter_notify_event_t *)event)->event_y
+    );
+break;
+case XCB_LEAVE_NOTIFY:
+    fprintf(stderr, "LeaveNotify(%d, %d)\n",
+        ((xcb_leave_notify_event_t *)event)->event_x,
+        ((xcb_leave_notify_event_t *)event)->event_y
+    );
+break;
+]]></version>
+</code>
+
+<p>Track window movements and resizing.</p>
+
+<code id="check-event-configure">
+<version name="xlib">
+case ConfigureNotify:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        event.xconfigure.x, event.xconfigure.y,
+        event.xconfigure.x + event.xconfigure.width,
+        event.xconfigure.y + event.xconfigure.height
+    );
+break;
+</version>
+<version name="xcb">
+case XCB_CONFIGURE_NOTIFY:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        ((xcb_configure_notify_event_t *)event)->x,
+        ((xcb_configure_notify_event_t *)event)->y,
+        ((xcb_configure_notify_event_t *)event)->x + ((xcb_configure_notify_event_t *)event)->width,
+        ((xcb_configure_notify_event_t *)event)->y + ((xcb_configure_notify_event_t *)event)->height
+    );
+break;
+</version>
+</code>
+
+<p>Finally, update the end of loop to quit if the close window button has been pressed.</p>
+
+<code id="end-eventloop2">
+<version name="xlib">
+        } // end switch
+        if(!is_running)
+        {
+            break;
+        }
+    } // end while
+    /* idle code can come here */
+} // end while
+</version>
+<version name="xcb">
+        } // end switch
+        free(event);
+        if(!is_running)
+        {
+            break;
+        }
+    } // end while
+    /* idle code can come here */
+} // end while
+</version>
+</code>
+
+<tangle filename="events-%.c">
+<![CDATA[
+#include <stdio.h>
+#include <stdlib.h>
+]]>
+<include id="include2"/>
+<![CDATA[
+#define WINDOW_LEFT 10
+#define WINDOW_TOP 10
+#define WINDOW_WIDTH 620
+#define WINDOW_HEIGHT 300
+#define WINDOW_TITLE "Example Window"
+
+#define X1 10
+#define Y1 10
+#define X2 300
+#define Y2 300
+
+int main()
+{
+]]>
+<include id="connect-screen"/>
+<include id="createwindow3"/>
+<include id="settitle"/>
+<include id="WM_PROTOCOLS"/>
+<include id="WM_DELETE_WINDOW"/>
+<include id="set_wm_protocols"/>
+<include id="mapwindow"/>
+<include id="flush" version="xcb"/>
+<include id="begin-eventloop2"/>
+    <include id="check-event-deletewindow"/>
+    <include id="check-event-exposure"/>
+    <include id="check-event-key"/>
+    <include id="check-event-button"/>
+    <include id="check-event-motion"/>
+    <include id="check-event-enter-leave"/>
+    <include id="check-event-configure"/>
+<include id="end-eventloop2"/>
+<![CDATA[
+}
+]]>
+</tangle>
+
+<!-- - - - - -->
+
+<h1>Idling and animating</h1>
+
+<p>Using <tt>XNextEvent</tt> and <tt>xcb_wait_for_event</tt> will block the running client until an event is available, typically as a result of user interaction. To use the idle time for other things, such as background calculation or animation, it must be checked whether any events are available first.</p>
+
+<code id="begin-eventloop3">
+<version name="xlib"><![CDATA[
+int width = 0, height = 0, state = 0;
+bool is_running = true;
+bool needs_redraw = false;
+clock_t last_tick = clock();
+while(is_running)
+{
+    if(XPending(display))
+    {
+        XEvent event;
+        XNextEvent(display, &event);
+        switch(event.type)
+        {
+]]></version>
+<version name="xcb"><![CDATA[
+int width = 0, height = 0, state = 0;
+bool is_running = true;
+bool needs_redraw = false;
+clock_t last_tick = clock();
+while(is_running)
+{
+    xcb_generic_event_t * event;
+    if((event = xcb_poll_for_event(connection)))
+    {
+        switch(event->response_type & ~0x80)
+        {
+]]></version>
+</code>
+
+<p>On exposure, we set a flag to mark needing a redraw.</p>
+
+<code id="check-event-exposure2">
+<version name="xlib">
+case Expose:
+    fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
+        event.xexpose.x, event.xexpose.y,
+        event.xexpose.x + event.xexpose.width,
+        event.xexpose.y + event.xexpose.height
+    );
+
+    needs_redraw = true;
+break;
+</version>
+<version name="xcb">
+case XCB_EXPOSE:
+    fprintf(stderr, "Expose(%d, %d)-(%d, %d)\n",
+        ((xcb_expose_event_t *)event)->x,
+        ((xcb_expose_event_t *)event)->y,
+        ((xcb_expose_event_t *)event)->x + ((xcb_expose_event_t *)event)->width,
+        ((xcb_expose_event_t *)event)->y + ((xcb_expose_event_t *)event)->height
+    );
+
+    needs_redraw = true;
+break;
+</version>
+</code>
+
+<p>Register the size of the window on resizing (and before redrawing, wait for a following exposure event).</p>
+
+<code id="check-event-configure2">
+<version name="xlib">
+case ConfigureNotify:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        event.xconfigure.x, event.xconfigure.y,
+        event.xconfigure.x + event.xconfigure.width,
+        event.xconfigure.y + event.xconfigure.height
+    );
+    width = event.xconfigure.width;
+    height = event.xconfigure.height;
+break;
+</version>
+<version name="xcb">
+case XCB_CONFIGURE_NOTIFY:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        ((xcb_configure_notify_event_t *)event)->x,
+        ((xcb_configure_notify_event_t *)event)->y,
+        ((xcb_configure_notify_event_t *)event)->x + ((xcb_configure_notify_event_t *)event)->width,
+        ((xcb_configure_notify_event_t *)event)->y + ((xcb_configure_notify_event_t *)event)->height
+    );
+    width = ((xcb_configure_notify_event_t *)event)->width;
+    height = ((xcb_configure_notify_event_t *)event)->height;
+break;
+</version>
+</code>
+
+<p>At the end of the loop we redraw the image.</p>
+
+<code id="end-eventloop3">
+<version name="xlib">
+        } // end switch
+    } // end if
+
+    clock_t next_tick = clock();
+    if(next_tick - last_tick >= CLOCKS_PER_SEC / 5)
+    {
+        last_tick = next_tick;
+        needs_redraw = true;
+        state++;
+    }
+
+    if(needs_redraw)
+    {
+        fprintf(stderr, "Redraw\n");
+
+        XGCValues gc_attributes;
+        gc_attributes.foreground = WhitePixel(display, screen_number);
+        GC gc = XCreateGC(
+            display,
+            window,
+            /* valuemask = */ GCForeground,
+            /* values = */ &amp;gc_attributes);
+
+        XRectangle rectangles[1];
+        rectangles[0].x = 0;
+        rectangles[0].y = 0;
+        rectangles[0].width = width;
+        rectangles[0].height = height;
+
+        XFillRectangles(
+            display,
+            window,
+            gc,
+            rectangles,
+            1);
+
+        gc_attributes.foreground = BlackPixel(display, screen_number);
+        XChangeGC(
+            display,
+            gc,
+            /* valuemask = */ GCForeground,
+            /* values = */ &amp;gc_attributes);
+
+        XPoint points[2];
+
+        points[0].x = <i>X1</i> + (state &amp; 255);
+        points[0].y = <i>Y1</i>;
+        points[1].x = <i>X2</i> - (state &amp; 255);
+        points[1].y = <i>Y2</i>;
+
+        XDrawLines(
+            display,
+            window,
+            gc,
+            points,
+            2,
+            CoordModeOrigin);
+
+        XFlush(display);
+
+        needs_redraw = false;
+    }
+} // end while
+</version>
+<version name="xcb">
+        } // end switch
+        free(event);
+    } // end if
+
+    clock_t next_tick = clock();
+    if(next_tick - last_tick >= CLOCKS_PER_SEC / 5)
+    {
+        last_tick = next_tick;
+        needs_redraw = true;
+        state++;
+    }
+
+    if(needs_redraw)
+    {
+        fprintf(stderr, "Redraw\n");
+
+        xcb_gcontext_t gc = xcb_generate_id(connection);
+        uint32_t gc_attributes[1];
+        gc_attributes[0] = screen->white_pixel;
+        xcb_create_gc(
+            connection,
+            gc,
+            window,
+            /* valuemask = */ XCB_GC_FOREGROUND,
+            /* values = */ gc_attributes);
+
+        xcb_rectangle_t rectangles[1];
+        rectangles[0].x = 0;
+        rectangles[0].y = 0;
+        rectangles[0].width = width;
+        rectangles[0].height = height;
+
+        xcb_poly_fill_rectangle(
+            connection,
+            window,
+            gc,
+            1,
+            rectangles);
+
+        gc_attributes[0] = screen->black_pixel;
+        xcb_change_gc(
+            connection,
+            gc,
+            /* valuemask = */ XCB_GC_FOREGROUND,
+            /* values = */ gc_attributes);
+
+        xcb_point_t points[2];
+
+        points[0].x = <i>X1</i> + (state &amp; 255);
+        points[0].y = <i>Y1</i>;
+        points[1].x = <i>X2</i> - (state &amp; 255);
+        points[1].y = <i>Y2</i>;
+
+        xcb_poly_line(
+            connection,
+            XCB_COORD_MODE_ORIGIN,
+            window,
+            gc,
+            2,
+            points);
+
+        xcb_flush(connection);
+
+        needs_redraw = false;
+    }
+} // end while
+</version>
+</code>
+-->
+
+<tangle filename="animate-%.c">
+<![CDATA[
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+]]>
+<include id="include2"/>
+<![CDATA[
+#define WINDOW_LEFT 10
+#define WINDOW_TOP 10
+#define WINDOW_WIDTH 620
+#define WINDOW_HEIGHT 300
+#define WINDOW_TITLE "Example Window"
+
+#define X1 10
+#define Y1 10
+#define X2 300
+#define Y2 300
+
+int main()
+{
+]]>
+<include id="connect-screen"/>
+<include id="createwindow3"/>
+<include id="settitle"/>
+<include id="WM_PROTOCOLS"/>
+<include id="WM_DELETE_WINDOW"/>
+<include id="set_wm_protocols"/>
+<include id="mapwindow"/>
+<include id="flush" version="xcb"/>
+<include id="begin-eventloop3"/>
+    <include id="check-event-deletewindow"/>
+    <include id="check-event-exposure2"/>
+    <include id="check-event-key"/>
+    <include id="check-event-button"/>
+    <include id="check-event-motion"/>
+    <include id="check-event-enter-leave"/>
+    <include id="check-event-configure2"/>
+<include id="end-eventloop3"/>
+<![CDATA[
+}
+]]>
+</tangle>
+
+<h1>References and links</h1>
+
+<ul>
+<li><a href="https://tronche.com/gui/x/">X Window System (and Xlib) documents</a>, including <a href="https://tronche.com/gui/x/xlib-tutorial/">a short tutorial</a></li>
+<li><a href="https://xorg.freedesktop.org/archive/X11R7.7/doc/libxcb/tutorial/index.html">XCB introduction</a></li>
+<li><a href="https://xcb.freedesktop.org/xlibtoxcbtranslationguide/">Xlib to XCB translation guide</a></li>
+</ul>
+
+</body>
+</weave>
+</web>
