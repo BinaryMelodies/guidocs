@@ -1705,6 +1705,111 @@ int main()
 ]]>
 </tangle>
 
+<h1>Listing available visuals</h1>
+
+<p>Xlib can copy the visual information structures corresponding to a certain template (or <tt>NULL</tt> to return all visuals) in an allocated buffer. For XCB, visual information must be iterated through each screen and each bit depth.</p>
+
+<weave versions="Xlib XCB">
+<code id="list-visuals">
+<version name="Xlib"><![CDATA[
+static const char * visual_class_names[] =
+{
+    [StaticGray] = " (StaticGray)",
+    [GrayScale] = " (GrayScale)",
+    [StaticColor] = " (StaticColor)",
+    [PseudoColor] = " (PseudoColor)",
+    [TrueColor] = " (TrueColor)",
+    [DirectColor] = " (DirectColor)",
+};
+
+int visual_count;
+XVisualInfo * visual_list = XGetVisualInfo(
+    display,
+    /* mask = */ 0,
+    /* template = */ NULL,
+    &visual_count);
+
+for(int i = 0; i < visual_count; i++)
+{
+    printf(
+            "visual #%d\n"
+            "\tScreen: %d%s\n"
+            "\tID: 0x%lX\n"
+            "\tclass: %d%s\n"
+            "\tdepth: %d, colormap: %d, bits/rgb: %d\n",
+        i + 1,
+        visual_list[i].screen, visual_list[i].screen == screen_number ? " (default)" : "",
+        visual_list[i].visualid,
+        visual_list[i].class, visual_class_names[visual_list[i].class],
+        visual_list[i].depth,
+        visual_list[i].colormap_size,
+        visual_list[i].bits_per_rgb);
+}
+
+XFree(visual_list);
+]]></version>
+<version name="XCB"><![CDATA[
+static const char * visual_class_names[] =
+{
+    [XCB_VISUAL_CLASS_STATIC_GRAY] = " (StaticGray)",
+    [XCB_VISUAL_CLASS_GRAY_SCALE] = " (GrayScale)",
+    [XCB_VISUAL_CLASS_STATIC_COLOR] = " (StaticColor)",
+    [XCB_VISUAL_CLASS_PSEUDO_COLOR] = " (PseudoColor)",
+    [XCB_VISUAL_CLASS_TRUE_COLOR] = " (TrueColor)",
+    [XCB_VISUAL_CLASS_DIRECT_COLOR] = " (DirectColor)",
+};
+
+int visual_number = 0;
+xcb_screen_iterator_t screen_iter;
+int current_screen_number;
+for(screen_iter = xcb_setup_roots_iterator(xcb_get_setup(connection)),
+        current_screen_number = 0;
+    screen_iter.rem;
+    current_screen_number ++, xcb_screen_next(&screen_iter))
+{
+    xcb_depth_iterator_t depth_iter;
+    for(depth_iter = xcb_screen_allowed_depths_iterator(screen_iter.data);
+        depth_iter.rem;
+        xcb_depth_next(&depth_iter))
+    {
+        xcb_visualtype_iterator_t visual_iter;
+
+        for(visual_iter = xcb_depth_visuals_iterator(depth_iter.data);
+            visual_iter.rem;
+            xcb_visualtype_next(&visual_iter))
+        {
+            printf(
+                    "visual #%d\n"
+                    "\tScreen: %d%s\n"
+                    "\tID: 0x%lX\n"
+                    "\tclass: %d%s\n"
+                    "\tdepth: %d, colormap: %d, bits/rgb: %d\n",
+                ++visual_number,
+                current_screen_number, current_screen_number == screen_number ? " (default)" : "",
+                visual_iter.data->visual_id,
+                visual_iter.data->_class, visual_class_names[visual_iter.data->_class],
+                depth_iter.data->depth,
+                visual_iter.data->colormap_entries,
+                visual_iter.data->bits_per_rgb_value);
+        }
+    }
+}
+]]></version>
+</code>
+
+<tangle filename="visuals-%.c" versions="Xlib XCB">
+<![CDATA[
+#include <stdio.h>
+]]>
+<include id="include2"/>
+int main()
+{
+<include id="connect-screen"/>
+<include id="list-visuals"/>
+}
+</tangle>
+</weave>
+
 <h1>References and links</h1>
 
 <ul>
