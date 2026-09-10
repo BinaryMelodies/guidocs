@@ -1613,7 +1613,7 @@ break;
 
 <p>We will use <tt>XGetImage</tt> to get a copy of the window frame and cache it in the <tt>image</tt> variable. Then we use <tt>XAllocColor</tt> and <tt>XPutPixel</tt> to assign colors to the image. In this case, this will be a gradient from blue to red. Finally, we use <tt>XPutImage</tt> to make the created image display.</p>
 
-<code id="idle">
+<code id="idle1">
 <version name="Xlib">
 if(needs_redraw)
 {
@@ -1654,7 +1654,17 @@ if(needs_redraw)
         XPutPixel(image, i, i, color.pixel);
     }
 
-    XPutImage(display, window, DefaultGC(display, screen_number), image, 0, 0, 0, 0, width, height);
+    XPutImage(
+        display,
+        window,
+        gc,
+        image,
+        /* source_x = */ 0,
+        /* source_y = */ 0,
+        /* destination_x = */ 0,
+        /* destination_y = */ 0,
+        width,
+        height);
     XFlush(display);
     needs_redraw = false;
 }
@@ -1698,7 +1708,7 @@ int main()
     <include id="check-event-configure3"/>
         } // end switch
     } // end if
-<include id="idle"/>
+<include id="idle1"/>
 } // end while
 <![CDATA[
 }
@@ -1796,6 +1806,7 @@ for(screen_iter = xcb_setup_roots_iterator(xcb_get_setup(connection)),
 }
 ]]></version>
 </code>
+</weave>
 
 <tangle filename="visuals-%.c" versions="Xlib XCB">
 <![CDATA[
@@ -1808,7 +1819,447 @@ int main()
 <include id="list-visuals"/>
 }
 </tangle>
+
+<weave versions="Xlib XCB">
+<h1>Directly accessing a truecolor framebuffer</h1>
+
+<p>First we need a truecolor visual. For simplicity's sake, we will only look for visuals with 32-bit depth. Once we opened the display, this can be done using the <tt>XMatchVisualInfo</tt> call in Xlib.</p>
+
+<code id="match-visual-info">
+<version name="Xlib"><![CDATA[
+XVisualInfo visual_info;
+assert(XMatchVisualInfo(display, screen_number, 32, TrueColor, &visual_info));
+]]></version>
+</code>
+
+<p>However, for XCB, we must iterate through all the possible visuals.</p>
+
+<code id="find-visual-info">
+<!-- TODO: the Xlib version is untested -->
+<version name="Xlib"><![CDATA[
+XVisualInfo visual_info;
+XVisualInfo visual_template;
+visual_template.screen = screen_number;
+int visual_count;
+XVisualInfo * visual_list = XGetVisualInfo(
+    display,
+    VisualScreenMask,
+    &visual_template,
+    &visual_count);
+for(int i = 0; i < visual_count; i++)
+{
+    if(visual_list[i].class == TrueColor && visual_list[i].depth == 32)
+    {
+        memcpy(&visual_info, &visual_list[i], sizeof(XVisualInfo));
+        break;
+    }
+}
+XFree(visual_list);
+]]></version>
+<version name="XCB"><![CDATA[
+xcb_visualtype_t * visualtype = NULL;
+xcb_depth_iterator_t depth_iter;
+for(depth_iter = xcb_screen_allowed_depths_iterator(screen);
+    depth_iter.rem;
+    xcb_depth_next(&depth_iter))
+{
+    if(depth_iter.data->depth == 32)
+    {
+        visualtype = xcb_depth_visuals_iterator(depth_iter.data).data;
+        break;
+    }
+}
+assert(visualtype);
+]]></version>
+</code>
+
+<p>Let us allocate a color map.</p>
+
+<code id="create-colormap">
+<version name="Xlib"><![CDATA[
+Window root_window = RootWindow(display, screen_number);
+Colormap colormap = XCreateColormap(display, root_window, visual_info.visual, AllocNone);
+]]></version>
+<version name="XCB"><![CDATA[
+xcb_colormap_t colormap = xcb_generate_id(connection);
+xcb_create_colormap(connection, XCB_COLORMAP_ALLOC_NONE, colormap, screen->root, visualtype->visual_id);
+]]></version>
+</code>
+
+<p>When creating the window, we need to filter for exposure and configure notify events and assign the colormap.</p>
+
+<code id="createwindow5">
+<version name="Xlib">
+XSetWindowAttributes window_attributes;
+window_attributes.colormap = XCreateColormap(display, root_window, visual_info.visual, AllocNone);
+window_attributes.border_pixel = 0;
+window_attributes.event_mask = ExposureMask | StructureNotifyMask;
+
+Window window = XCreateWindow(
+    display,
+    root_window,
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    visual_info.depth,
+    /* class = */ InputOutput,
+    visual_info.visual,
+    /* valuemask = */ CWColormap | CWBorderPixel | CWEventMask,
+    /* attributes = */ &amp;window_attributes);
+</version>
+<version name="XCB">
+/* these attributes must come in this order */
+uint32_t window_attributes[3];
+/* border_pixel */
+window_attributes[0] = screen->white_pixel;
+/* event_mask */
+window_attributes[1] = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+/* color map */
+window_attributes[2] = colormap;
+
+xcb_window_t window = xcb_generate_id(connection);
+xcb_create_window(
+    connection,
+    32,
+    window,
+    screen->root,
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* class = */ XCB_WINDOW_CLASS_INPUT_OUTPUT,
+    visualtype->visual_id,
+    /* valuemask = */ XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP,
+    /* attributes = */ &amp;window_attributes);
+</version>
+</code>
+
+<p>The only information needed for the graphical context is to set graphics exposures to false.</p>
+
+<code id="create-gc2">
+<version name="Xlib"><![CDATA[
+XGCValues gc_attributes;
+gc_attributes.graphics_exposures = false;
+GC gc = XCreateGC(
+    display,
+    window,
+    /* valuemask = */ GCGraphicsExposures,
+    /* values = */ &gc_attributes);
+]]></version>
+<version name="XCB"><![CDATA[
+xcb_gcontext_t gc = xcb_generate_id(connection);
+uint32_t gc_attributes[1];
+gc_attributes[0] = false;
+xcb_create_gc(
+    connection,
+    gc,
+    window,
+    /* valuemask = */ XCB_GC_GRAPHICS_EXPOSURES,
+    /* values = */ gc_attributes);
+]]></version>
+</code>
+
+<p>To determine the red, green, blue fields in a pixel value, we must find the shift amount in the masks provided in the visual information. We will choose the most straight forward algorithm for this.</p>
+
+<code id="get-masks">
+<version name="Xlib"><![CDATA[
+uint32_t red_shift, red_mask;
+uint32_t green_shift, green_mask;
+uint32_t blue_shift, blue_mask;
+
+red_mask = visual_info.red_mask;
+red_shift = 0;
+while(red_mask && !(red_mask & 1))
+{
+    red_shift ++;
+    red_mask >>= 1;
+}
+
+green_mask = visual_info.green_mask;
+green_shift = 0;
+while(green_mask && !(green_mask & 1))
+{
+    green_shift ++;
+    green_mask >>= 1;
+}
+
+blue_mask = visual_info.blue_mask;
+blue_shift = 0;
+while(blue_mask && !(blue_mask & 1))
+{
+    blue_shift ++;
+    blue_mask >>= 1;
+}
+]]></version>
+<version name="XCB"><![CDATA[
+uint32_t red_shift, red_mask;
+uint32_t green_shift, green_mask;
+uint32_t blue_shift, blue_mask;
+
+red_mask = visualtype->red_mask;
+red_shift = 0;
+while(red_mask && !(red_mask & 1))
+{
+    red_shift ++;
+    red_mask >>= 1;
+}
+
+green_mask = visualtype->green_mask;
+green_shift = 0;
+while(green_mask && !(green_mask & 1))
+{
+    green_shift ++;
+    green_mask >>= 1;
+}
+
+blue_mask = visualtype->blue_mask;
+blue_shift = 0;
+while(blue_mask && !(blue_mask & 1))
+{
+    blue_shift ++;
+    blue_mask >>= 1;
+}
+]]></version>
+</code>
+
+<p>We will keep track of the frame buffer and, in the case of Xlib, an image structure in the <tt>image</tt> variable.</p>
+
+<code id="begin-eventloop5">
+<version name="Xlib"><![CDATA[
+uint32_t * framebuffer = NULL;
+XImage * image = NULL;
+int width = 0, height = 0;
+bool is_running = true;
+bool needs_redraw = false;
+while(is_running)
+{
+    while(XPending(display))
+    {
+        XEvent event;
+        XNextEvent(display, &event);
+        switch(event.type)
+        {
+]]></version>
+<version name="XCB"><![CDATA[
+uint32_t * framebuffer = NULL;
+int width = 0, height = 0;
+bool is_running = true;
+bool needs_redraw = false;
+while(is_running)
+{
+    xcb_generic_event_t * event;
+    if((event = xcb_poll_for_event(connection)))
+    {
+        switch(event->response_type & ~0x80)
+        {
+]]></version>
+</code>
+
+<p>If the window is resized, destroy the variables containing the frame buffer and let a new one be created on redraw.</p>
+
+<code id="check-event-configure4">
+<version name="Xlib"><![CDATA[
+case ConfigureNotify:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        event.xconfigure.x, event.xconfigure.y,
+        event.xconfigure.x + event.xconfigure.width,
+        event.xconfigure.y + event.xconfigure.height
+    );
+    width = event.xconfigure.width;
+    height = event.xconfigure.height;
+    if(framebuffer)
+    {
+        // also deallocates framebuffer
+        XDestroyImage(image);
+        image = NULL;
+        framebuffer = NULL;
+    }
+break;
+]]></version>
+<version name="XCB">
+case XCB_CONFIGURE_NOTIFY:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        ((xcb_configure_notify_event_t *)event)->x,
+        ((xcb_configure_notify_event_t *)event)->y,
+        ((xcb_configure_notify_event_t *)event)->x + ((xcb_configure_notify_event_t *)event)->width,
+        ((xcb_configure_notify_event_t *)event)->y + ((xcb_configure_notify_event_t *)event)->height
+    );
+    width = ((xcb_configure_notify_event_t *)event)->width;
+    height = ((xcb_configure_notify_event_t *)event)->height;
+    if(framebuffer)
+    {
+        free(framebuffer);
+        framebuffer = NULL;
+    }
+break;
+</version>
+</code>
+
+<p>In Xlib, to display a prerendered frame, the <tt>XPutImage</tt> function can be used. For this we need an image which we can create using the <tt>XCreateImage</tt> function. In XCB, there are no image structures, and all these values must be passed to <tt>xcb_put_image</tt> instead.</p>
+
+<code id="idle2">
+<version name="Xlib">
+if(needs_redraw)
+{
+    fprintf(stderr, "Redraw\n");
+
+    if(!framebuffer)
+    {
+        printf("%dx%d\n", width, height);
+
+        framebuffer = malloc(width * height * sizeof(uint32_t));
+        memset(framebuffer, 0xFF, width * height * sizeof(uint32_t));
+
+        image = XCreateImage(
+            display,
+            visual_info.visual,
+            visual_info.depth,
+            ZPixmap,
+            /* offset = */ 0,
+            (char *)framebuffer,
+            width,
+            height,
+            /* bitmap_pad = */ 8,
+            width * sizeof(uint32_t));
+    }
+
+    int count = 256;
+    if(width &lt; count)
+    {
+        count = width;
+    }
+    if(height &lt; count)
+    {
+        count = height;
+    }
+
+    for(int i = 0; i &lt; count; i++)
+    {
+        framebuffer[i * width + i] = 0xFF000000
+            | ((i &amp; red_mask) &lt;&lt; red_shift)
+            | (((255 - i) &amp; blue_mask) &lt;&lt; blue_shift);
+    }
+
+    XPutImage(
+        display,
+        window,
+        gc,
+        image,
+        /* source_x = */ 0,
+        /* source_y = */ 0,
+        /* destination_x = */ 0,
+        /* destination_y = */ 0,
+        width,
+        height);
+    XFlush(display);
+    needs_redraw = false;
+}
+</version>
+<version name="XCB">
+if(needs_redraw)
+{
+    fprintf(stderr, "Redraw\n");
+
+    if(!framebuffer)
+    {
+        printf("%dx%d\n", width, height);
+
+        framebuffer = malloc(width * height * sizeof(uint32_t));
+        memset(framebuffer, 0xFF, width * height * sizeof(uint32_t));
+    }
+
+    int count = 256;
+    if(width &lt; count)
+    {
+        count = width;
+    }
+    if(height &lt; count)
+    {
+        count = height;
+    }
+
+    for(int i = 0; i &lt; count; i++)
+    {
+        framebuffer[i * width + i] = 0xFF000000
+            | ((i &amp; red_mask) &lt;&lt; red_shift)
+            | (((255 - i) &amp; blue_mask) &lt;&lt; blue_shift);
+    }
+
+    xcb_put_image(
+        connection,
+        XCB_IMAGE_FORMAT_Z_PIXMAP,
+        window,
+        gc,
+        width,
+        height,
+        /* destination_x = */ 0,
+        /* destination_y = */ 0,
+        /* left_pad = */ 0,
+        /* depth = */ 32,
+        width * height * sizeof(uint32_t),
+        (char *) framebuffer);
+
+    xcb_flush(connection);
+
+    needs_redraw = false;
+}
+</version>
+</code>
 </weave>
+
+<tangle filename="framebuffer-%.c" versions="Xlib XCB">
+<![CDATA[
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+]]>
+<include id="include2"/>
+<![CDATA[
+#define WINDOW_LEFT 10
+#define WINDOW_TOP 10
+#define WINDOW_WIDTH 620
+#define WINDOW_HEIGHT 300
+#define WINDOW_TITLE "Example Window"
+
+#define X1 10
+#define Y1 10
+#define X2 300
+#define Y2 300
+
+int main()
+{
+]]>
+<include id="connect-screen"/>
+<include id="match-visual-info"/>
+<include id="find-visual-info" version="XCB"/>
+<include id="create-colormap"/>
+<include id="createwindow5"/>
+<include id="settitle"/>
+<include id="WM_PROTOCOLS"/>
+<include id="WM_DELETE_WINDOW"/>
+<include id="set_wm_protocols"/>
+<include id="mapwindow"/>
+<include id="create-gc2"/>
+<include id="flush" version="XCB"/>
+<include id="get-masks"/>
+<include id="begin-eventloop5"/>
+    <include id="check-event-deletewindow"/>
+    <include id="check-event-exposure2"/>
+    <include id="check-event-configure4"/>
+        } // end switch
+    } // end if
+<include id="idle2"/>
+} // end while
+<![CDATA[
+}
+]]>
+</tangle>
 
 <h1>References and links</h1>
 
