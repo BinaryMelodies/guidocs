@@ -939,6 +939,31 @@ xcb_change_property(
 ]]></version>
 </code>
 
+<p>Let us also create a graphic context corresponding to this window.</p>
+
+<code id="create-gc1">
+<version name="Xlib"><![CDATA[
+XGCValues gc_attributes;
+gc_attributes.foreground = BlackPixel(display, screen_number);
+GC gc = XCreateGC(
+    display,
+    window,
+    /* valuemask = */ GCForeground,
+    /* values = */ &gc_attributes);
+]]></version>
+<version name="XCB"><![CDATA[
+xcb_gcontext_t gc = xcb_generate_id(connection);
+uint32_t gc_attributes[1];
+gc_attributes[0] = screen->black_pixel;
+xcb_create_gc(
+    connection,
+    gc,
+    window,
+    /* valuemask = */ XCB_GC_FOREGROUND,
+    /* values = */ gc_attributes);
+]]></version>
+</code>
+
 <p>After mapping the window, we enter the main loop.</p>
 
 <code id="begin-eventloop2">
@@ -990,7 +1015,7 @@ case XCB_CLIENT_MESSAGE:
 
 <p>On exposure, display a line (instead of MapNotify).</p>
 
-<code id="check-event-exposure">
+<code id="check-event-exposure1">
 <version name="Xlib">
 case Expose:
 {
@@ -999,14 +1024,6 @@ case Expose:
         event.xexpose.x + event.xexpose.width,
         event.xexpose.y + event.xexpose.height
     );
-
-    XGCValues gc_attributes;
-    gc_attributes.foreground = BlackPixel(display, screen_number);
-    GC gc = XCreateGC(
-        display,
-        window,
-        /* valuemask = */ GCForeground,
-        /* values = */ &amp;gc_attributes);
 
     XPoint points[2];
 
@@ -1034,16 +1051,6 @@ case XCB_EXPOSE:
         ((xcb_expose_event_t *)event)->x + ((xcb_expose_event_t *)event)->width,
         ((xcb_expose_event_t *)event)->y + ((xcb_expose_event_t *)event)->height
     );
-
-    xcb_gcontext_t gc = xcb_generate_id(connection);
-    uint32_t gc_attributes[1];
-    gc_attributes[0] = screen->black_pixel;
-    xcb_create_gc(
-        connection,
-        gc,
-        window,
-        /* valuemask = */ XCB_GC_FOREGROUND,
-        /* values = */ gc_attributes);
 
     xcb_point_t points[2];
 
@@ -1246,10 +1253,11 @@ int main()
 <include id="WM_DELETE_WINDOW"/>
 <include id="set_wm_protocols"/>
 <include id="mapwindow"/>
+<include id="create-gc1"/>
 <include id="flush" version="XCB"/>
 <include id="begin-eventloop2"/>
     <include id="check-event-deletewindow"/>
-    <include id="check-event-exposure"/>
+    <include id="check-event-exposure1"/>
     <include id="check-event-key"/>
     <include id="check-event-button"/>
     <include id="check-event-motion"/>
@@ -1373,11 +1381,10 @@ break;
     {
         fprintf(stderr, "Redraw\n");
 
-        XGCValues gc_attributes;
         gc_attributes.foreground = WhitePixel(display, screen_number);
-        GC gc = XCreateGC(
+        XChangeGC(
             display,
-            window,
+            gc,
             /* valuemask = */ GCForeground,
             /* values = */ &amp;gc_attributes);
 
@@ -1439,13 +1446,11 @@ break;
     {
         fprintf(stderr, "Redraw\n");
 
-        xcb_gcontext_t gc = xcb_generate_id(connection);
         uint32_t gc_attributes[1];
         gc_attributes[0] = screen->white_pixel;
-        xcb_create_gc(
+        xcb_change_gc(
             connection,
             gc,
-            window,
             /* valuemask = */ XCB_GC_FOREGROUND,
             /* values = */ gc_attributes);
 
@@ -1522,6 +1527,7 @@ int main()
 <include id="WM_DELETE_WINDOW"/>
 <include id="set_wm_protocols"/>
 <include id="mapwindow"/>
+<include id="create-gc1"/>
 <include id="flush" version="XCB"/>
 <include id="begin-eventloop3"/>
     <include id="check-event-deletewindow"/>
