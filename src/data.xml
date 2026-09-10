@@ -1543,6 +1543,168 @@ int main()
 ]]>
 </tangle>
 
+<weave versions="Xlib">
+<h1>Directly accessing the framebuffer (Xlib only)</h1>
+
+<p>We need to filter for exposure and configure notify events.</p>
+
+<code id="createwindow4">
+<version name="Xlib">
+XSetWindowAttributes window_attributes;
+window_attributes.background_pixel = WhitePixel(display, screen_number);
+window_attributes.border_pixel = BlackPixel(display, screen_number);
+window_attributes.event_mask = ExposureMask | StructureNotifyMask;
+
+Window window = XCreateWindow(
+    display,
+    RootWindow(display, screen_number),
+    <i>WINDOW_LEFT</i>,
+    <i>WINDOW_TOP</i>,
+    <i>WINDOW_WIDTH</i>,
+    <i>WINDOW_HEIGHT</i>,
+    /* border_width = */ 0,
+    /* depth = */ CopyFromParent,
+    /* class = */ InputOutput,
+    /* visual = */ CopyFromParent,
+    /* valuemask = */ CWBackPixel | CWBorderPixel | CWEventMask,
+    /* attributes = */ &amp;window_attributes);
+</version>
+</code>
+
+<p>We will keep track of a copy of the window square in the <tt>image</tt> variable.</p>
+
+<code id="begin-eventloop4">
+<version name="Xlib"><![CDATA[
+XImage * image = NULL;
+int width = 0, height = 0;
+bool is_running = true;
+bool needs_redraw = false;
+while(is_running)
+{
+    while(XPending(display))
+    {
+        XEvent event;
+        XNextEvent(display, &event);
+        switch(event.type)
+        {
+]]></version>
+</code>
+
+<p>If the window is resized, destroy the <tt>image</tt> variable and let a new one be created on redraw.</p>
+
+<code id="check-event-configure3">
+<version name="Xlib"><![CDATA[
+case ConfigureNotify:
+    fprintf(stderr, "ConfigureNotify(%d, %d)-(%d, %d)\n",
+        event.xconfigure.x, event.xconfigure.y,
+        event.xconfigure.x + event.xconfigure.width,
+        event.xconfigure.y + event.xconfigure.height
+    );
+    width = event.xconfigure.width;
+    height = event.xconfigure.height;
+    if(image)
+    {
+        XDestroyImage(image);
+        image = NULL;
+    }
+break;
+]]></version>
+</code>
+
+<p>We will use <tt>XGetImage</tt> to get a copy of the window frame and cache it in the <tt>image</tt> variable. Then we use <tt>XAllocColor</tt> and <tt>XPutPixel</tt> to assign colors to the image. In this case, this will be a gradient from blue to red. Finally, we use <tt>XPutImage</tt> to make the created image display.</p>
+
+<code id="idle">
+<version name="Xlib">
+if(needs_redraw)
+{
+    fprintf(stderr, "Redraw\n");
+
+    if(!image)
+    {
+        printf("%dx%d\n", width, height);
+
+        image = XGetImage(
+            display,
+            window,
+            0,
+            0,
+            width,
+            height,
+            AllPlanes,
+            ZPixmap);
+    }
+
+    int count = 256;
+    if(width &lt; count)
+    {
+        count = width;
+    }
+    if(height &lt; count)
+    {
+        count = height;
+    }
+
+    for(int i = 0; i &lt; count; i++)
+    {
+        XColor color;
+        color.red = i * 65535 / 256;
+        color.green = 0;
+        color.blue = 65535 - i * 65535 / 256;
+        XAllocColor(display, DefaultColormap(display, screen_number), &amp;color);
+        XPutPixel(image, i, i, color.pixel);
+    }
+
+    XPutImage(display, window, DefaultGC(display, screen_number), image, 0, 0, 0, 0, width, height);
+    XFlush(display);
+    needs_redraw = false;
+}
+</version>
+</code>
+</weave>
+
+<tangle filename="framebuffer0-%.c" versions="Xlib">
+<![CDATA[
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+]]>
+<include id="include2"/>
+<![CDATA[
+#define WINDOW_LEFT 10
+#define WINDOW_TOP 10
+#define WINDOW_WIDTH 620
+#define WINDOW_HEIGHT 300
+#define WINDOW_TITLE "Example Window"
+
+#define X1 10
+#define Y1 10
+#define X2 300
+#define Y2 300
+
+int main()
+{
+]]>
+<include id="connect-screen"/>
+<include id="createwindow4"/>
+<include id="settitle"/>
+<include id="WM_PROTOCOLS"/>
+<include id="WM_DELETE_WINDOW"/>
+<include id="set_wm_protocols"/>
+<include id="mapwindow"/>
+<include id="create-gc1"/>
+<include id="begin-eventloop4"/>
+    <include id="check-event-deletewindow"/>
+    <include id="check-event-exposure2"/>
+    <include id="check-event-configure3"/>
+        } // end switch
+    } // end if
+<include id="idle"/>
+} // end while
+<![CDATA[
+}
+]]>
+</tangle>
+
 <h1>References and links</h1>
 
 <ul>
